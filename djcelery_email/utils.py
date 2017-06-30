@@ -30,6 +30,7 @@ def email_to_dict(message):
                     'from_email': message.from_email,
                     'to': message.to,
                     'bcc': message.bcc,
+                    'reply_to': message.reply_to,
                     # ignore connection
                     'headers': message.extra_headers,
                     'cc': message.cc}
