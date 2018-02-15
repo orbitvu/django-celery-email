@@ -1,10 +1,8 @@
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
+from django.utils.six import string_types
 
-try:
-    from celery import shared_task
-except ImportError:
-    from celery.decorators import task as shared_task
+from celery import shared_task
 
 # Make sure our AppConf is loaded properly.
 import djcelery_email.conf  # noqa
@@ -16,6 +14,11 @@ from djcelery_email.utils import dict_to_email, email_to_dict
 
 TASK_CONFIG = {'name': 'djcelery_email_send_multiple', 'ignore_result': True}
 TASK_CONFIG.update(settings.CELERY_EMAIL_TASK_CONFIG)
+
+# import base if string to allow a base celery task
+if 'base' in TASK_CONFIG and isinstance(TASK_CONFIG['base'], string_types):
+    from django.utils.module_loading import import_string
+    TASK_CONFIG['base'] = import_string(TASK_CONFIG['base'])
 
 
 @shared_task(**TASK_CONFIG)
@@ -34,7 +37,10 @@ def send_emails(messages, backend_kwargs=None, **kwargs):
     messages = [email_to_dict(m) for m in messages]
 
     conn = get_connection(backend=settings.CELERY_EMAIL_BACKEND, **combined_kwargs)
-    conn.open()
+    try:
+        conn.open()
+    except Exception:
+        logger.exception("Cannot reach CELERY_EMAIL_BACKEND %s", settings.CELERY_EMAIL_BACKEND)
 
     messages_sent = 0
 

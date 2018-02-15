@@ -2,22 +2,24 @@
 django-celery-email - A Celery-backed Django Email Backend
 ==========================================================
 
-.. image:: https://travis-ci.org/pmclanahan/django-celery-email.svg?branch=master
+.. image:: https://img.shields.io/travis/pmclanahan/django-celery-email/master.svg
     :target: https://travis-ci.org/pmclanahan/django-celery-email
+.. image:: https://img.shields.io/pypi/v/django-celery-email.svg
+    :target: https://pypi.python.org/pypi/django-celery-email
 
-A `Django`_ 1.3+ email backend that uses a `Celery`_ queue for out-of-band sending
+A `Django`_ email backend that uses a `Celery`_ queue for out-of-band sending
 of the messages.
 
 .. _`Celery`: http://celeryproject.org/
 .. _`Django`: http://www.djangoproject.org/
 
 .. warning::
-	
-	This version of ``django-celery-email`` is NOT compatible with versions
-	of Celery prior to 2.2.0. If you need to use Celery 2.0.x or 2.1.x, please
-	use `django-celery-email 0.1.1`_.
 
-.. _`django-celery-email 0.1.1`: http://pypi.python.org/pypi/django-celery-email/0.1.1/
+	This version requires the following versions:
+
+	* Python 2.7 and Python >= 3.4
+	* Django 1.8, 1.10, 1.11
+	* Celery 4.0
 
 Using django-celery-email
 =========================
@@ -39,13 +41,15 @@ procedure will most likely be to get your email working using only Django, then
 change ``EMAIL_BACKEND`` to ``CELERY_EMAIL_BACKEND``, and then add the new
 ``EMAIL_BACKEND`` setting from above.
 
+Mass email are sent in chunks of size ``CELERY_EMAIL_CHUNK_SIZE`` (defaults to 10).
+
 If you need to set any of the settings (attributes) you'd normally be able to set on a
 `Celery Task`_ class had you written it yourself, you may specify them in a ``dict``
 in the ``CELERY_EMAIL_TASK_CONFIG`` setting::
 
     CELERY_EMAIL_TASK_CONFIG = {
         'queue' : 'email',
-        'rate_limit' : '50/m',
+        'rate_limit' : '50/m',  # * CELERY_EMAIL_CHUNK_SIZE (default: 10)
         ...
     }
 
@@ -72,9 +76,13 @@ handled by your Celery workers::
 ``results`` will be a list of celery `AsyncResult`_ objects that you may ignore, or use to check the
 status of the email delivery task, or even wait for it to complete if want. You have to enable a result
 backend and set ``ignore_result`` to ``False`` in ``CELERY_EMAIL_TASK_CONFIG`` if you want to use these.
+You should also set ``CELERY_EMAIL_CHUNK_SIZE = 1`` in settings if you are concerned about task status
+and results.
+
 See the `Celery docs`_ for more info.
 
-``len(results)`` will be the number of emails you attempted to send, and is in no way a reflection on the success or failure 
+
+``len(results)`` will be the number of emails you attempted to send divided by CELERY_EMAIL_CHUNK_SIZE, and is in no way a reflection on the success or failure
 of their delivery.
 
 .. _`Celery Task`: http://celery.readthedocs.org/en/latest/userguide/tasks.html#basics
@@ -83,6 +91,41 @@ of their delivery.
 
 Changelog
 =========
+
+2.0 - 2017.07.10
+----------------
+* Support for Django 1.11 and Celery 4.0
+* Dropped support for Celery 2.x and 3.x
+* Dropped support for Python 3.3
+
+1.1.5 - 2016.07.20
+------------------
+* Support extra email attributes via CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES setting
+* Updated version requirements in README
+
+
+1.1.4 - 2016.01.19
+------------------
+
+* Support sending email with embedded images. Thanks `Georg Zimmer`_.
+* Document CELERY_EMAIL_CHUNK_SIZE. Thanks `Jonas Haag`_.
+* Add exception handling to email backend connection. Thanks `Tom`_.
+
+.. _Georg Zimmer: https://github.com/georgmzimmer
+.. _Tom: https://github.com/tomleo
+
+1.1.3 - 2015.11.06
+------------------
+
+* Support setting celery.base from string. Thanks `Matthew Jacobi`_.
+* Use six for py2/3 string compatibility. Thanks `Matthew Jacobi`_.
+* Pass content_subtype back in for retries. Thanks `Mark Joshua Tan`_.
+* Rework how tests work, add tox, rework travis-ci matrix.
+* Use six from django.utils.
+* Release a universal wheel.
+
+.. _Matthew Jacobi: https://github.com/oppianmatt
+.. _Mark Joshua Tan: https://github.com/mark-tan
 
 1.1.2 - 2015.07.06
 ------------------

@@ -1,7 +1,9 @@
+import copy
+import base64
 from email.mime.base import MIMEBase
 
-from django.core.mail import EmailMultiAlternatives
-from django.core.mail import EmailMessage
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives, EmailMessage
 
 
 def chunked(iterator, chunksize):
@@ -31,76 +33,78 @@ def email_to_dict(message):
                     'to': message.to,
                     'bcc': message.bcc,
                     # ignore connection
+                    'attachments': [],
                     'headers': message.extra_headers,
                     'cc': message.cc}
+
+    # Django 1.8 support
+    # https://docs.djangoproject.com/en/1.8/topics/email/#django.core.mail.EmailMessage
+    if hasattr(message, 'reply_to'):
+        message_dict['reply_to'] = message.reply_to
 
     if hasattr(message, 'alternatives'):
         message_dict['alternatives'] = message.alternatives
     if message.content_subtype != EmailMessage.content_subtype:
         message_dict["content_subtype"] = message.content_subtype
-    if hasattr(message, 'attachments'):
-        attachments = []
-        for attachment in message.attachments:
-            if isinstance(attachment, MIMEBase):
-                attachments.append({'class': attachment.__class__.__name__,
-                                    'module': attachment.__class__.__module__,
-                                    '_headers': attachment._headers,
-                                    '_unixfrom': attachment._unixfrom,
-                                    '_payload': attachment._payload,
-                                    '_charset': attachment._charset,
-                                    'preamble': attachment.preamble,
-                                    'defects': attachment.defects,
-                                    '_default_type': attachment._default_type})
-            else:
-                attachments.append({'class': 'tuple',
-                                    'data': attachment})
-        message_dict['attachments'] = attachments
+    if message.mixed_subtype != EmailMessage.mixed_subtype:
+        message_dict["mixed_subtype"] = message.mixed_subtype
+
+    attachments = message.attachments
+    for attachment in attachments:
+        if isinstance(attachment, MIMEBase):
+            filename = attachment.get_filename('')
+            binary_contents = attachment.get_payload(decode=True)
+            mimetype = attachment.get_content_type()
+        else:
+            filename, binary_contents, mimetype = attachment
+        contents = base64.b64encode(binary_contents).decode('ascii')
+        message_dict['attachments'].append((filename, contents, mimetype))
+
+    if settings.CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES:
+        for attr in settings.CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES:
+            if hasattr(message, attr):
+                message_dict[attr] = getattr(message, attr)
+
     return message_dict
 
 
 def dict_to_email(messagedict):
+    messagedict = copy.deepcopy(messagedict)
+    extra_attrs = {}
+    if settings.CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES:
+        for attr in settings.CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES:
+            if attr in messagedict:
+                extra_attrs[attr] = messagedict.pop(attr)
+    attachments = messagedict.pop('attachments')
+    messagedict['attachments'] = []
+    for attachment in attachments:
+        filename, contents, mimetype = attachment
+        binary_contents = base64.b64decode(contents.encode('ascii'))
+        messagedict['attachments'].append(
+            (filename, binary_contents, mimetype))
     if isinstance(messagedict, dict) and "content_subtype" in messagedict:
         content_subtype = messagedict["content_subtype"]
         del messagedict["content_subtype"]
     else:
         content_subtype = None
-
-    attachments = messagedict.get('attachments')
-    if 'attachments' in messagedict:
-        del messagedict['attachments']
-
+    if isinstance(messagedict, dict) and "mixed_subtype" in messagedict:
+        mixed_subtype = messagedict["mixed_subtype"]
+        del messagedict["mixed_subtype"]
+    else:
+        mixed_subtype = None
     if hasattr(messagedict, 'from_email'):
         ret = messagedict
     elif 'alternatives' in messagedict:
         ret = EmailMultiAlternatives(**messagedict)
     else:
         ret = EmailMessage(**messagedict)
-
-    for attachment in attachments:
-        if attachment['class'] == 'tuple':
-            ret.attach(*attachment['data'])
-        else:
-            Klass = getattr(
-                __import__(
-                    attachment['module'],
-                    globals(),
-                    locals(),
-                    [attachment['class']]),
-                attachment['class'])
-            attachment_obj = Klass(attachment['_payload'], 'dummysubtype')
-            attachment_obj._headers = attachment['_headers']
-            attachment_obj._unixfrom = attachment['_unixfrom']
-            attachment_obj._payload = attachment['_payload']
-            attachment_obj._charset = attachment['_charset']
-            attachment_obj.preamble = attachment['preamble']
-            attachment_obj.defects = attachment['defects']
-            attachment_obj._default_type = attachment['_default_type']
-            ret.attach(attachment_obj)
-
+    for attr, val in extra_attrs.items():
+        setattr(ret, attr, val)
     if content_subtype:
         ret.content_subtype = content_subtype
         messagedict["content_subtype"] = content_subtype  # bring back content subtype for 'retry'
+    if mixed_subtype:
+        ret.mixed_subtype = mixed_subtype
+        messagedict["mixed_subtype"] = mixed_subtype  # bring back mixed subtype for 'retry'
 
-    if attachments:
-        messagedict["attachments"] = attachments  # bring back attachments for 'retry'
     return ret

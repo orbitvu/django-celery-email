@@ -1,17 +1,17 @@
+import json
+import os.path
+from email.mime.image import MIMEImage
+
 from django.core import mail
 from django.core.mail.backends.base import BaseEmailBackend
-from django.test import TestCase
 from django.core.mail.backends import locmem
 from django.core.mail import EmailMultiAlternatives
-
-try:
-    from django.test.utils import override_settings
-except ImportError:
-    from override_settings import override_settings
+from django.test import TestCase
+from django.test.utils import override_settings
 
 import celery
 from djcelery_email import tasks
-from djcelery_email.utils import email_to_dict
+from djcelery_email.utils import email_to_dict, dict_to_email
 
 
 def even(n):
@@ -31,6 +31,57 @@ class TracingBackend(BaseEmailBackend):
 
     def send_messages(self, messages):
         self.__class__.called = True
+
+
+class UtilTests(TestCase):
+    @override_settings(CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES=['extra_attribute'])
+    def test_email_to_dict_extra_attrs(self):
+        msg = mail.EmailMessage()
+        msg.extra_attribute = {'name': 'val'}
+
+        self.assertEquals(email_to_dict(msg)['extra_attribute'], msg.extra_attribute)
+
+    @override_settings(CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES=['extra_attribute'])
+    def test_dict_to_email_extra_attrs(self):
+        msg_dict = email_to_dict(mail.EmailMessage())
+        msg_dict['extra_attribute'] = {'name': 'val'}
+
+        self.assertEquals(email_to_dict(dict_to_email(msg_dict)), msg_dict)
+
+    def check_json_of_msg(self, msg):
+        serialized = json.dumps(email_to_dict(msg))
+        self.assertEqual(
+            email_to_dict(dict_to_email(json.loads(serialized))),
+            email_to_dict(msg))
+
+    def test_email_with_attachment(self):
+        file_path = os.path.join(os.path.dirname(__file__), 'image.png')
+        with open(file_path, 'rb') as file:
+            file_contents = file.read()
+        msg = mail.EmailMessage(
+            'test', 'Testing with Celery! w00t!!', 'from@example.com',
+            ['to@example.com'])
+        msg.attach('image.png', file_contents)
+        self.check_json_of_msg(msg)
+
+    def test_email_with_mime_attachment(self):
+        file_path = os.path.join(os.path.dirname(__file__), 'image.png')
+        with open(file_path, 'rb') as file:
+            file_contents = file.read()
+        mimg = MIMEImage(file_contents)
+        msg = mail.EmailMessage(
+            'test', 'Testing with Celery! w00t!!', 'from@example.com',
+            ['to@example.com'])
+        msg.attach(mimg)
+        self.check_json_of_msg(msg)
+
+    def test_email_with_attachment_from_file(self):
+        file_path = os.path.join(os.path.dirname(__file__), 'image.png')
+        msg = mail.EmailMessage(
+            'test', 'Testing with Celery! w00t!!', 'from@example.com',
+            ['to@example.com'])
+        msg.attach_file(file_path)
+        self.check_json_of_msg(msg)
 
 
 class TaskTests(TestCase):
@@ -105,7 +156,7 @@ class TaskTests(TestCase):
         self.assertEqual(messages_sent, N)
         self.assertEqual(len(mail.outbox), N)
 
-    @override_settings(CELERY_EMAIL_BACKEND='tester.tests.TracingBackend')
+    @override_settings(CELERY_EMAIL_BACKEND='tests.tests.TracingBackend')
     def test_uses_correct_backend(self):
         """ It should use the backend configured in CELERY_EMAIL_BACKEND. """
         TracingBackend.called = False
@@ -113,7 +164,7 @@ class TaskTests(TestCase):
         tasks.send_email(email_to_dict(msg), backend_kwargs={})
         self.assertTrue(TracingBackend.called)
 
-    @override_settings(CELERY_EMAIL_BACKEND='tester.tests.TracingBackend')
+    @override_settings(CELERY_EMAIL_BACKEND='tests.tests.TracingBackend')
     def test_backend_parameters(self):
         """ It should pass kwargs like username and password to the backend. """
         TracingBackend.kwargs = None
@@ -121,7 +172,7 @@ class TaskTests(TestCase):
         tasks.send_email(email_to_dict(msg), backend_kwargs={'foo': 'bar'})
         self.assertEqual(TracingBackend.kwargs.get('foo'), 'bar')
 
-    @override_settings(CELERY_EMAIL_BACKEND='tester.tests.TracingBackend')
+    @override_settings(CELERY_EMAIL_BACKEND='tests.tests.TracingBackend')
     def test_backend_parameters_kwargs(self):
         """ It should pass on kwargs specified as keyword params. """
         TracingBackend.kwargs = None
@@ -165,7 +216,7 @@ class TaskErrorTests(TestCase):
         super(TaskErrorTests, self).tearDown()
         tasks.send_emails.retry = self._old_retry
 
-    @override_settings(CELERY_EMAIL_BACKEND='tester.tests.EvenErrorBackend')
+    @override_settings(CELERY_EMAIL_BACKEND='tests.tests.EvenErrorBackend')
     def test_send_multiple_emails(self):
         N = 10
         msgs = [mail.EmailMessage(subject="msg %d" % i) for i in range(N)]
@@ -273,11 +324,11 @@ class IntegrationTests(TestCase):
     def setUp(self):
         super(IntegrationTests, self).setUp()
         # TODO: replace with 'unittest.mock' at some point
-        celery.current_app.conf.CELERY_ALWAYS_EAGER = True
+        celery.current_app.conf.task_always_eager = True
 
     def tearDown(self):
         super(IntegrationTests, self).tearDown()
-        celery.current_app.conf.CELERY_ALWAYS_EAGER = False
+        celery.current_app.conf.task_always_eager = False
 
     def test_sending_email(self):
         [result] = mail.send_mail('test', 'Testing with Celery! w00t!!', 'from@example.com',
