@@ -17,8 +17,8 @@ of the messages.
 
 	This version requires the following versions:
 
-	* Python 2.7 and Python >= 3.4
-	* Django 1.8, 1.10, 1.11
+	* Python >= 3.5
+	* Django 2.2, and 3.0
 	* Celery 4.0
 
 Using django-celery-email
@@ -91,6 +91,30 @@ of their delivery.
 
 Changelog
 =========
+
+3.0.0 - 2019.12.10
+------------------
+
+* Support for Django 3.0
+* Support for Python 3.8
+* Droppped support for Django 1.x, Django 2.0 and Django 2.1
+* Droppped support for Python 2.7
+
+2.0.2 - 2019.05.29
+------------------
+
+* Reduce memory usage by running email_to_dict on chunks. Thanks `Paul Brown`_.
+* Simplify dict_to_email for readability and efficiency. Thanks `Paul Brown`_.
+* Update test matrix for supported versions of Django, Celery and Python. Thanks `James`_.
+
+.. _Paul Brown: https://github.com/pawl
+.. _James: https://github.com/jmsmkn
+
+2.0.1 - 2018.18.27
+------------------
+* Fix bug preventing sending text/* encoded mime attachments. Thanks `Cesar Canassa`_.
+
+.. _Cesar Canassa: https://github.com/canassa
 
 2.0 - 2017.07.10
 ----------------

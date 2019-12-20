@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import os
 import codecs
 
-from setuptools import setup, find_packages, Command
+from setuptools import setup, find_packages
 
 
 base_dir = os.path.dirname(__file__)
@@ -30,7 +29,7 @@ setup(
     scripts=[],
     zip_safe=False,
     install_requires=[
-        'django>=1.8',
+        'django>=2.2',
         'celery>=4.0',
         'django-appconf',
     ],
@@ -39,12 +38,11 @@ setup(
         'Framework :: Django',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Operating System :: POSIX',

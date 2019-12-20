@@ -39,14 +39,14 @@ class UtilTests(TestCase):
         msg = mail.EmailMessage()
         msg.extra_attribute = {'name': 'val'}
 
-        self.assertEquals(email_to_dict(msg)['extra_attribute'], msg.extra_attribute)
+        self.assertEqual(email_to_dict(msg)['extra_attribute'], msg.extra_attribute)
 
     @override_settings(CELERY_EMAIL_MESSAGE_EXTRA_ATTRIBUTES=['extra_attribute'])
     def test_dict_to_email_extra_attrs(self):
         msg_dict = email_to_dict(mail.EmailMessage())
         msg_dict['extra_attribute'] = {'name': 'val'}
 
-        self.assertEquals(email_to_dict(dict_to_email(msg_dict)), msg_dict)
+        self.assertEqual(email_to_dict(dict_to_email(msg_dict)), msg_dict)
 
     def check_json_of_msg(self, msg):
         serialized = json.dumps(email_to_dict(msg))
@@ -346,7 +346,19 @@ class IntegrationTests(TestCase):
         self.assertEqual(result.get(), 1)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].subject, 'test')
-        self.assertEqual(mail.outbox[0].alternatives, [(html, 'text/html')])
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        self.assertEqual(list(mail.outbox[0].alternatives[0]), [html, 'text/html'])
+
+    def test_sending_mail_with_text_attachment(self):
+        msg = mail.EmailMessage(
+            'test', 'Testing with Celery! w00t!!', 'from@example.com',
+            ['to@example.com'])
+        msg.attach('image.png', 'csv content', 'text/csv')
+        [result] = msg.send()
+        self.assertEqual(result.get(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, 'test')
+        self.assertEqual(mail.outbox[0].content_subtype, "plain")
 
     def test_sending_html_only_email(self):
         msg = mail.EmailMessage('test', 'Testing <b>with Celery! w00t!!</b>', 'from@example.com',
