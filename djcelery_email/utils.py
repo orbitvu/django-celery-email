@@ -34,6 +34,9 @@ def email_to_dict(message):
                     'bcc': message.bcc,
                     # ignore connection
                     'attachments': [],
+# orbitvu
+                    'attachment_headers': {},
+# /orbitvu
                     'headers': message.extra_headers,
                     'cc': message.cc,
                     'reply_to': message.reply_to}
@@ -46,11 +49,19 @@ def email_to_dict(message):
         message_dict["mixed_subtype"] = message.mixed_subtype
 
     attachments = message.attachments
-    for attachment in attachments:
+# orbitvu
+    # for attachment in attachments:
+    for idx, attachment in enumerate(attachments):
+# /orbitvu
         if isinstance(attachment, MIMEBase):
             filename = attachment.get_filename('')
             binary_contents = attachment.get_payload(decode=True)
             mimetype = attachment.get_content_type()
+# orbitvu
+#  add attachemnt_headers to the message_dict
+            message_dict['attachment_headers'][str(idx)] = \
+                attachment._headers
+# /orbitvu
         else:
             filename, binary_contents, mimetype = attachment
             # For a mimetype starting with text/, content is expected to be a string.
@@ -83,7 +94,13 @@ def dict_to_email(messagedict):
     # remove attachments from message_kwargs then reinsert after base64 decoding
     attachments = message_kwargs.pop('attachments')
     message_kwargs['attachments'] = []
-    for attachment in attachments:
+
+# orbitvu
+#  handle attachment_headers
+    attachment_headers = message_kwargs.pop('attachment_headers')
+    # for attachment in attachments:
+    for index, attachment in enumerate(attachments):
+# /orbitvu
         filename, contents, mimetype = attachment
         contents = base64.b64decode(contents.encode('ascii'))
 
@@ -91,6 +108,45 @@ def dict_to_email(messagedict):
         if mimetype and mimetype.startswith('text/'):
             contents = contents.decode()
 
+# orbitvu
+#  if attachment_headers are in use we need to create a message as a MIMEBase
+#  to be able to set headers
+        if 'alternatives' not in message_kwargs:
+            if mimetype is None:
+                attachment_type = 'application'
+                attachment_subtype = 'octet-stream'
+            else:
+                attachment_type, attachment_subtype = mimetype.split('/')
+
+            if str(index) in attachment_headers:
+                # Create attachment object
+                mime = MIMEBase(attachment_type, attachment_subtype)
+                for header_key, header_value in attachment_headers[str(index)]:
+                    try:
+                        mime.replace_header(header_key, header_value)
+                    except KeyError:
+                        mime.add_header(header_key, header_value)
+
+                mime.set_payload(
+                    base64.b64encode(contents).decode('ascii')
+                )
+
+                # Assign attachment headers
+                for header in attachment_headers[str(index)]:
+                    header, header_value = header
+                    try:
+                        mime.replace_header(header, header_value)
+                    except KeyError:
+                        mime.add_header(header, header_value)
+
+                try:
+                    mime.replace_header('Content-Transfer-Encoding', 'base64')
+                except KeyError:
+                    mime.add_header('Content-Transfer-Encoding', 'base64')
+                filename = mime
+                contents = None
+                mimetype = None
+# /orbitvu
         message_kwargs['attachments'].append((filename, contents, mimetype))
 
     if 'alternatives' in message_kwargs:
